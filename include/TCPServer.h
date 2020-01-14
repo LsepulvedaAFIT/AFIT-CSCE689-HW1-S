@@ -3,6 +3,8 @@
 
 #include "Server.h"
 
+#include <netinet/in.h>
+
 class TCPServer : public Server 
 {
 public:
@@ -14,7 +16,12 @@ public:
    void shutdown();
 
 private:
- 
+   //stores socket file descriptor
+   int socketFD = 0;
+
+   //data structure needed for bind & accept functions
+    struct sockaddr_in address; 
+
 
 
 };
