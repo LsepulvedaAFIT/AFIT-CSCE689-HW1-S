@@ -16,6 +16,8 @@
 //for non-blocking
 #include <fcntl.h>
 
+#include "exceptions.h"
+
 /**********************************************************************************************
  * TCPClient (constructor) - Creates a Stdin file descriptor to simplify handling of user input. 
  *
@@ -42,8 +44,11 @@ TCPClient::~TCPClient() {
 
 void TCPClient::connectTo(const char *ip_addr, unsigned short port) {
     this->socketFD = socket(AF_INET, SOCK_STREAM, 0);
+    //this->socketFD = -1;//testing
     if (this->socketFD < 0){
         std::cout << "socket failed\n";
+        //const char* errSerSock = "Client socket failed";
+        //socket_error(errSerSock);
     }
     
     this->servAddress.sin_family = AF_INET;
@@ -74,18 +79,26 @@ void TCPClient::connectTo(const char *ip_addr, unsigned short port) {
 
 void TCPClient::handleConnection() {
     int valread; 
-    const char* hello = "Hello from client"; 
-    char *command;
+    //const char* hello = "Hello from client"; 
+    std::string command;
     char buffer[1024] = {0}; 
+    std::string readBuffer = "";
 
-    send(this->socketFD, hello , strlen(hello) , 0 ); 
-    valread = read( this->socketFD, buffer, 1024); 
-    printf("%s\n",buffer );
-    std::cin >> command;
-    send(this->socketFD, const_cast<char *>(command) , strlen(command) , 0 ); 
-    std::cout << "Command message sent\n" ; 
-    valread = read( this->socketFD, buffer, 1024); 
-    printf("%s\n",buffer ); 
+    //send(this->socketFD, hello, strlen(hello) , 0 ); 
+
+    while (true)
+    {
+        std::cout.flush();
+        valread = read( this->socketFD, buffer, 1024); 
+        std::cout << buffer;
+        std::cout.flush();
+        memset(buffer, 0, 1024);
+        std::cin >> command;
+        const char *sendCmd = command.c_str();
+        send(this->socketFD, const_cast<char *>(sendCmd) , strlen(sendCmd) , 0 ); 
+        std::cout << "Command message sent\n\n" ; 
+        std::cout.flush();
+    }
 }
 
 /**********************************************************************************************

@@ -16,13 +16,22 @@
 //for non-blocking
 #include <fcntl.h>
 
-TCPServer::TCPServer() {
+#include "exceptions.h"
+#include "strfuncts.h"
 
+#define MAX_CLIENTS 2
+
+
+TCPServer::TCPServer() {
+    //initializes client vector to zeros;
+    for (int i = 0; i < MAX_CLIENTS; i++)
+    {
+        this->client_sockets.push_back(0);
+    }
 }
 
 
 TCPServer::~TCPServer() {
-
 }
 
 /**********************************************************************************************
@@ -41,15 +50,9 @@ void TCPServer::bindSvr(const char *ip_addr, short unsigned int port) {
     //Protocol: 0 -> default Internet Protocol
     this->socketFD = socket(AF_INET, SOCK_STREAM, 0);
     //std::cout << "socket: " << this->socket_fd << "\n"; //testing
-    //this->socket_fd = 0; //testing
+    //this->socketFD = -1; //error testing
     //making sure socket was create without errors
-    if (this->socketFD < 0)
-    {
-        //TODO:Throw exception instead per function description
-        std::cout << "socket failed\n"; 
-        exit(EXIT_FAILURE);
-    }
-  
+    errorCheck(this->socketFD, "Server socket failed");
     /********************************************************************
     * The variable serv_addr is a structure of type struct sockaddr_in. 
     * This structure has four fields. The first field is short sin_family, 
@@ -65,7 +68,8 @@ void TCPServer::bindSvr(const char *ip_addr, short unsigned int port) {
     * be the IP address of the machine on which the server is running, and 
     * there is a symbolic constant INADDR_ANY which gets this address. 
     *********************************************************************/
-    this->address.sin_addr.s_addr = INADDR_ANY; 
+    //this->address.sin_addr.s_addr = INADDR_ANY;
+    this->address.sin_addr.s_addr = inet_addr( ip_addr ); 
 
     /********************************************************************
     * The second field of serv_addr is unsigned short sin_port , which
@@ -81,13 +85,8 @@ void TCPServer::bindSvr(const char *ip_addr, short unsigned int port) {
     //c++ method
     int bindCheck = bind(this->socketFD, reinterpret_cast<struct sockaddr *>(&address), sizeof(address) );
     //error checking
-    if (bindCheck < 0)
-    {
-        //TODO:Throw exception instead per function description
-        std::cout << "bind failed\n"; 
-        exit(EXIT_FAILURE); 
-    }
-    
+    errorCheck(bindCheck, "Server bind failed");
+
     //Non-blocking declaration
     //fcntl: manipulate file descriptor
     //cmd: F_SETFL -> set file status flag
@@ -105,23 +104,15 @@ void TCPServer::bindSvr(const char *ip_addr, short unsigned int port) {
  **********************************************************************************************/
 
 void TCPServer::listenSvr() {
-    int MAX_CLIENTS = 2; //client can still connect & get greet but no two-way communication
     int max_sd = 0;
-    //stores the client socket connections
-    std::vector<int> client_sockets(MAX_CLIENTS,0); 
+    
     //buffer for read and write communications
     char buffer[1024] = {0}; 
 
     //sets socket to listen with max queue size of 3
     int lisCheck = listen(this->socketFD, 3);
     //checks for errors
-    if (lisCheck < 0)
-    {
-        //TODO:Throw exception instead per function description
-        std::cout << "listen failed\n"; 
-        exit(EXIT_FAILURE); 
-    }
-    
+    errorCheck(lisCheck, "Server listen failed");
     //sets the size for addrlen to pass as a parameter
     //into socket accept function
     int addrlen = sizeof(address);
@@ -158,19 +149,14 @@ void TCPServer::listenSvr() {
 
         if (FD_ISSET(this->socketFD, &readset))
         {
-            //int setSocket = accept(this->socketFD, (struct sockaddr *)&address, (socklen_t*)&addrlen);
             int setSocket = accept(this->socketFD, reinterpret_cast<struct sockaddr *>(&address), reinterpret_cast<socklen_t*>(&addrlen));
-            if (setSocket < 0)
-            {
-                //TODO:Throw exception instead per function description
-                std::cout << "accept failed\n"; 
-                exit(EXIT_FAILURE);
-            }
+            errorCheck(setSocket, "Server acceot failed");
+
             std::cout << "New connection created: socket " << setSocket << std::endl;
             
-            //might need to change lineendings Windows uses "\r\n"
-            const char* helloMessage = "Hello Client!\r\n\r\nMENU\r\n1: Username\r\n2: Password\r\n3: Change IP\r\n4: Change Port\r\n5: EXIT\r\n\r\nCOMMAND:";
+            const char* helloMessage = "Hello Client!\n\nMENU\n1: Current IP Address\n2: Current Port\n3: displays graphic\n4: displays graphic\n5: displays graphic\npasswd: Change Password\nexit: Disconnect From Server\nmenu: Displays Menu\n";
             send(setSocket, helloMessage, strlen(helloMessage) , 0);
+            sendCommandPrompt(setSocket);
 
             std::cout << "Hello message sent to socket: " << setSocket << std::endl; 
 
@@ -179,6 +165,7 @@ void TCPServer::listenSvr() {
                 //if position is empty  
                 if( client_sockets.at(i) == 0 )   
                 {   
+                    //add new client to vector
                     client_sockets.at(i) = setSocket;   
                     printf("Adding to list of sockets as %d\n" , i);   
                          
@@ -199,8 +186,7 @@ void TCPServer::listenSvr() {
                 if (valread == 0)   
                 {   
                     //Somebody disconnected , get his details and print  
-                    getpeername(sd , (struct sockaddr*)&address , (socklen_t*)&addrlen);   
-                    printf("Host disconnected , ip %s , port %d \n" , inet_ntoa(address.sin_addr) , ntohs(address.sin_port));   
+                    printDisconnectedClientInfo(sd);
                         
                     //Close the socket and mark as 0 in list for reuse  
                     close( sd );   
@@ -214,15 +200,37 @@ void TCPServer::listenSvr() {
                     //of the data read  
                     buffer[valread] = '\0';
                     std::cout << "socket "<< sd << ": " << buffer << "\n";//testing
-                    if(atoi(buffer) == 5)
+                    
+                    std::string readCommandStr(buffer);
+                    clrNewlines(readCommandStr);
+                    if (readCommandStr == "hello")
                     {
-                        close(sd);
-                        client_sockets.at(i) = 0;
+                        std::string helloMessage = "(>n_n)> Hello Client\n";
+                        const char* helloCharStar = helloMessage.c_str();
+                        send(sd , helloCharStar, strlen(helloCharStar) , 0 );
+                    }
+                    else if (readCommandStr == "exit")
+                    {
+                        close( sd );   
+                        client_sockets.at(i) = 0;   
+                    }
+                    else if (readCommandStr == "passwd")
+                    {
+                        std::string pwMessage = "TODO: Implement in HW2\n";
+                        const char* pwCharStar = pwMessage.c_str();
+                        send(sd , pwCharStar, strlen(pwCharStar) , 0 );  
+                    }
+                    else if (readCommandStr == "menu")
+                    {
+                        std::string menu = "MENU\n1: Current IP Address\n2: Current Port\n3: displays graphic\n4: displays graphic\n5: displays graphic\npasswd: Change Password\nexit: Disconnect from Server\nmenu: displays Menu\n";
+                        const char* menuCharStar = menu.c_str();
+                        send(sd , menuCharStar, strlen(menuCharStar) , 0 );  
                     }
                     else
                     {
-                        send(sd , buffer , strlen(buffer) , 0 );//testing: echo recieved message
+                        checkForIntCommand(buffer, sd);
                     }
+                    sendCommandPrompt(sd);
                 }   
             }   
         }  
@@ -238,4 +246,94 @@ void TCPServer::listenSvr() {
 void TCPServer::shutdown() {
     //closes the socket
     close(this->socketFD);
+}
+
+void TCPServer::errorCheck(int input, std::string errMess){
+    if (input < 0)
+    {
+        throw socket_error(errMess);
+    }
+}
+
+void TCPServer::sendCommandPrompt(int socket){
+    const char* cmdPromptMessage = "\nCOMMAND:";
+    send(socket, cmdPromptMessage, strlen(cmdPromptMessage) , 0);
+}
+
+std::string TCPServer::getClientIP(int inputSocketFD)
+{
+    int addrlen = sizeof(this->address);
+    getpeername(inputSocketFD, (struct sockaddr*)&address , (socklen_t*)&addrlen);   
+    //printf("Host disconnected , ip %s , port %d \n" , inet_ntoa(address.sin_addr) , ntohs(address.sin_port)); 
+    std::stringstream ss;
+    ss << inet_ntoa(address.sin_addr);
+    return ss.str();
+}
+
+void TCPServer::printDisconnectedClientInfo(const int sd)
+{
+    int addrlen = sizeof(this->address);
+    getpeername(sd , (struct sockaddr*)&address , (socklen_t*)&addrlen);   
+    std::cout << "Client disconnected , ip " << getClientIP(sd) << ", port " << ntohs(address.sin_port) << std::endl;;      
+}
+
+std::string TCPServer::getClientPort(const int inputSocketFD)
+{
+    int addrlen = sizeof(this->address);
+    getpeername(inputSocketFD, (struct sockaddr*)&address , (socklen_t*)&addrlen);   
+    printf("Host disconnected , ip %s , port %d \n" , inet_ntoa(address.sin_addr) , ntohs(address.sin_port)); 
+    std::stringstream ss;
+    ss << ntohs(address.sin_port);
+    return ss.str();
+}
+
+
+void TCPServer::checkForIntCommand(char *inputCommand, int socket){
+    int readCommandInt = atoi(inputCommand);
+    switch (readCommandInt)
+    {
+        case 1:
+        {
+            std::string clientIP = getClientIP(socket) + '\n';
+            const char* sendIPBuffer = clientIP.c_str();
+            send(socket, sendIPBuffer, strlen(sendIPBuffer) , 0 );
+            break;
+        }
+        case 2:
+        {
+            std::string clientPort = getClientPort(socket) + '\n';
+            const char* sendIPBuffer = clientPort.c_str();
+            send(socket , sendIPBuffer, strlen(sendIPBuffer) , 0 );
+            break;
+        }
+        case 3:
+        {
+            std::string cmd3Message = "__m_OO_m__\n";
+            const char* sendIPBuffer = cmd3Message.c_str();
+            send(socket , sendIPBuffer, strlen(sendIPBuffer) , 0 );
+            break;
+        }
+        case 4:
+        {
+            std::string cmd4Message = "m_(-___-)_m\n";
+            const char* sendIPBuffer = cmd4Message.c_str();
+            send(socket, sendIPBuffer, strlen(sendIPBuffer) , 0 );
+            break;
+        }
+        case 5:
+        {
+            std::string cmd5Message = "d[ o_O ]b\n";
+            const char* sendIPBuffer = cmd5Message.c_str();
+            send(socket , sendIPBuffer, strlen(sendIPBuffer) , 0 );
+            break;
+        }
+        default:
+        {
+            std::stringstream ssTemp;
+            ssTemp << "Unknown Command: " << inputCommand << "\n";
+            std::string uknMessStr = ssTemp.str();
+            const char* uknMessChar = uknMessStr.c_str();
+            send(socket , uknMessChar , strlen(uknMessChar) , 0 );
+        }
+    }
 }
