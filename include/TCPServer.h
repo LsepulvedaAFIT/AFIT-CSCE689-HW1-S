@@ -41,7 +41,7 @@ public:
    void checkForIntCommand(char *readCommand, int socket);
 
 private:
-   //stores socket file descriptor
+   //stores server socket file descriptor
    int socket_FD = 0;
 
    //data structure needed for bind & accept functions

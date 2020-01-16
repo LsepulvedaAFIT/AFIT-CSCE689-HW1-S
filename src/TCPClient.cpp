@@ -96,6 +96,7 @@ void TCPClient::handleConnection() {
 
         //take command and add newline to signifiy complete command
         std::cin >> command;
+        //adds to newline to signify end of command
         command = command + '\n';
         
         /*testing multiple commands

@@ -232,16 +232,20 @@ void TCPServer::listenSvr() {
                         std::cout << "partial cmd from client: " << currentClientFD << "\n";
                         continue;
                     }
+                    //variables for multiple command processing
                     size_t pos = 0;
                     std::string token;
                     std::string delimiter = "\n";
 
+                    //loops continue until all commands in a string are processed
                     while((newlineCmdCount > 0) && ((pos = this->clientObj_sockets.at(currentVectorIndex)->command.find(delimiter)) != std::string::npos))
                     {
+                        //separates the 1st command from the string if multiple commands are sent at once
                         if (newlineCmdCount > 1)
                         {
                                 readCommandStr = this->clientObj_sockets.at(currentVectorIndex)->command.substr(0, pos);
-                                std::cout << readCommandStr << std::endl;
+                                //std::cout << readCommandStr << std::endl;//testing
+                                //erases the command to be processed for original string
                                 this->clientObj_sockets.at(currentVectorIndex)->command.erase(0, pos + delimiter.length());
                         }
                         else{
