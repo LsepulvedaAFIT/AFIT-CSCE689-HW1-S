@@ -19,22 +19,24 @@ public:
    void shutdown();
 
    void errorCheck(int input, std::string errMess);
-   void sendCommandPrompt(int socket);
 
-   std::string getClientIP(const int inputSocketFD);
-   std::string getClientPort(const int inputSocketFD);
+   std::string getClientIP(const int inputFD);
+   std::string getClientPort(const int inputFD);
 
+   void sendMessageToClient(int inputClientFD, std::string message);
+   void closeClient(int inputClientFD, int index);
    void printDisconnectedClientInfo(const int sd);
    void checkForIntCommand(char *readCommand, int socket);
 
 private:
    //stores socket file descriptor
-   int socketFD = 0;
+   int socket_FD = 0;
 
    //data structure needed for bind & accept functions
    struct sockaddr_in address; 
 
-   std::vector<int> client_sockets; 
+   std::vector<int> client_sockets;
+   std::vector<std::string> client_commands;
 
 
 };

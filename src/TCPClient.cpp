@@ -17,6 +17,7 @@
 #include <fcntl.h>
 
 #include "exceptions.h"
+#include "strfuncts.h"
 
 /**********************************************************************************************
  * TCPClient (constructor) - Creates a Stdin file descriptor to simplify handling of user input. 
@@ -45,28 +46,18 @@ TCPClient::~TCPClient() {
 void TCPClient::connectTo(const char *ip_addr, unsigned short port) {
     this->socketFD = socket(AF_INET, SOCK_STREAM, 0);
     //this->socketFD = -1;//testing
-    if (this->socketFD < 0){
-        std::cout << "socket failed\n";
-        //const char* errSerSock = "Client socket failed";
-        //socket_error(errSerSock);
-    }
+    errorCheck(this->socketFD, "socket failed\n");
     
     this->servAddress.sin_family = AF_INET;
     this->servAddress.sin_port = htons(port);
 
     if(inet_pton(AF_INET, "127.0.0.1", &servAddress.sin_addr) <= 0)  
     { 
-        printf("\nInvalid address/ Address not supported \n"); 
-        exit(EXIT_FAILURE); 
+        throw socket_error("Invalid address, not supported");
     } 
 
-    int connVal = connect(this->socketFD, (struct sockaddr *)&servAddress, sizeof(servAddress));
-    if (connVal < 0) 
-    { 
-        printf("\nConnection Failed: connVal \n"); 
-        exit(EXIT_FAILURE);
-    } 
-
+    int connVal = connect(this->socketFD, reinterpret_cast<struct sockaddr *>(&this->servAddress), sizeof(this->servAddress));
+    errorCheck(connVal, "connect failed\n");
 }
 
 /**********************************************************************************************
@@ -78,26 +69,39 @@ void TCPClient::connectTo(const char *ip_addr, unsigned short port) {
  **********************************************************************************************/
 
 void TCPClient::handleConnection() {
-    int valread; 
-    //const char* hello = "Hello from client"; 
+    //variable for input/output commands and reading data
+    int valread;
     std::string command;
     char buffer[1024] = {0}; 
     std::string readBuffer = "";
 
-    //send(this->socketFD, hello, strlen(hello) , 0 ); 
-
+    //Main loop for sending and recieving data from server
     while (true)
     {
+        //flush for avoid errors
         std::cout.flush();
-        valread = read( this->socketFD, buffer, 1024); 
+        //reads and displays message on console
+        valread = read( this->socketFD, buffer, 1024);
         std::cout << buffer;
+        //flush for avoid errors
         std::cout.flush();
+        //clears the buffer
         memset(buffer, 0, 1024);
+
+        //take command and add newline to signifiy complete command
         std::cin >> command;
+        command = command + '\n';
+        //converts to char star and sends to server
         const char *sendCmd = command.c_str();
-        send(this->socketFD, const_cast<char *>(sendCmd) , strlen(sendCmd) , 0 ); 
+        send(this->socketFD, const_cast<char *>(sendCmd) , strlen(sendCmd) , 0 );
+        //User message for awarness 
         std::cout << "Command message sent\n\n" ; 
-        std::cout.flush();
+        //checks if user is exiting
+        clrNewlines(command);
+        if (command == "exit"){
+            //exits out of loop and proceeds to shutdown
+            break;
+        }
     }
 }
 
@@ -106,9 +110,17 @@ void TCPClient::handleConnection() {
  *
  *    Throws: socket_error for recoverable errors, runtime_error for unrecoverable types
  **********************************************************************************************/
-
 void TCPClient::closeConn() {
+    std::cout << "Shutting down connection\n";
     close(this->socketFD);
+}
+
+//Checks if input is less than 0 and throw an error with message
+void TCPClient::errorCheck(int input, std::string errMess){
+    if (input < 0)
+    {
+        throw socket_error(errMess);
+    }
 }
 
 

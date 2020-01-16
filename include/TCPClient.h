@@ -20,6 +20,8 @@ public:
 
    virtual void closeConn();
 
+   void errorCheck(int input, std::string errMess);
+
 private:
    int socketFD;
 
