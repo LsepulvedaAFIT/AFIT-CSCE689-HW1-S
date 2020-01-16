@@ -6,6 +6,8 @@
 #include <vector>
 #include <string.h>
 #include <sstream>
+#include <memory>
+#include <algorithm>
 
 //networking headers
 #include <sys/socket.h> // Core BSD socket functions and data structures.
@@ -23,13 +25,13 @@
 
 
 TCPServer::TCPServer() {
-    //initializes client vector to zeros;
+    //creates and initializes client vector to the max number of clients
     for (int i = 0; i < MAX_CLIENTS; i++)
     {
-        this->client_sockets.push_back(0);
-        std::string empty = "";
-        this->client_commands.push_back(empty);
+        std::unique_ptr<socket_obj> newSocket = std::make_unique<socket_obj>();
+        this->clientObj_sockets.push_back(std::move(newSocket));
     }
+
 }
 
 
@@ -131,7 +133,8 @@ void TCPServer::listenSvr() {
 
         //adds all exiting clients to readSet
         for (int i = 0; i < MAX_CLIENTS; i++){
-            currentClientFD = client_sockets.at(i);
+            currentClientFD = this->clientObj_sockets.at(i)->socketObjFD;
+
             //checks if vector has client associated to that index
             if(currentClientFD > 0)
             {   
@@ -177,11 +180,11 @@ void TCPServer::listenSvr() {
             //adds new client to vector
             for (int i = 0; i < MAX_CLIENTS; i++)   
             {   
-                //if position is empty  
-                if( client_sockets.at(i) == 0 )   
+                //find first position that empty
+                if( this->clientObj_sockets.at(i)->socketObjFD == 0 ) 
                 {   
-                    //add new client to vector
-                    client_sockets.at(i) = setSocket;   
+                    //add new client socket to vector  
+                    this->clientObj_sockets.at(i)->socketObjFD = setSocket;
                     std::cout << "Adding to list of sockets as " << i << "\n";   
                     break;   
                 }   
@@ -192,7 +195,7 @@ void TCPServer::listenSvr() {
         for (int currentVectorIndex = 0; currentVectorIndex < MAX_CLIENTS; currentVectorIndex++)   
         {   
             //current client index
-            currentClientFD = client_sockets.at(currentVectorIndex);   
+            currentClientFD = this->clientObj_sockets.at(currentVectorIndex)->socketObjFD;     
 
             //checks if client sent a command    
             if (FD_ISSET( currentClientFD , &readSet))   
@@ -216,45 +219,68 @@ void TCPServer::listenSvr() {
                     
                     //convert buffer arrar to string for better manipulation
                     std::string readCommandStr(buffer);
-                    
-                    this->client_commands.at(currentVectorIndex) = this->client_commands.at(currentVectorIndex) + readCommandStr;
 
-                    int completeCmd = this->client_commands.at(currentVectorIndex).find('\n');
-                    if (completeCmd == -1){
-                        std::cout << "partial cmd\n";
+                    //adds message to command buffer
+                    this->clientObj_sockets.at(currentVectorIndex)->command = this->clientObj_sockets.at(currentVectorIndex)->command + readCommandStr;
+
+                    //if command is incomplete server will continue on to other socket and check this one again in the next iteration
+                    size_t newlineCmdCount = std::count(this->clientObj_sockets.at(currentVectorIndex)->command.begin(), this->clientObj_sockets.at(currentVectorIndex)->command.end(), '\n');
+                    //if (completeCmd < 1){
+                    std::cout << "newlines: " << newlineCmdCount << std::endl;
+                    if (newlineCmdCount < 1){
+                        //Alert to Server Admin
+                        std::cout << "partial cmd from client: " << currentClientFD << "\n";
                         continue;
                     }
-                    
-                    readCommandStr = this->client_commands.at(currentVectorIndex);
+                    size_t pos = 0;
+                    std::string token;
+                    std::string delimiter = "\n";
 
-                    this->client_commands.at(currentVectorIndex) = "";
+                    while((newlineCmdCount > 0) && ((pos = this->clientObj_sockets.at(currentVectorIndex)->command.find(delimiter)) != std::string::npos))
+                    {
+                        if (newlineCmdCount > 1)
+                        {
+                                readCommandStr = this->clientObj_sockets.at(currentVectorIndex)->command.substr(0, pos);
+                                std::cout << readCommandStr << std::endl;
+                                this->clientObj_sockets.at(currentVectorIndex)->command.erase(0, pos + delimiter.length());
+                        }
+                        else{
+                            //transfers complete command
+                            readCommandStr = this->clientObj_sockets.at(currentVectorIndex)->command;
+                            //clears command buffer to avoid errors
+                            this->clientObj_sockets.at(currentVectorIndex)->command = "";
+                        }
 
-                    clrNewlines(readCommandStr);
-                    //Sends Hello message
-                    if (readCommandStr == "hello")
-                    {
-                        sendMessageToClient(currentClientFD, "(>n_n)> Hello Client\n\nCOMMAND:");
-                    }
-                    //closes client's connection
-                    else if (readCommandStr == "exit")
-                    {
-                        closeClient(currentClientFD, currentVectorIndex);
-                    }
-                    //TODO: HW2
-                    else if (readCommandStr == "passwd")
-                    {
-                        sendMessageToClient(currentClientFD, "TODO: Implement in HW2\n\nCOMMAND:");
+                        //clear away the newline character from command to ensure proper match
+                        clrNewlines(readCommandStr);
 
-                    }
-                    //Displays menu
-                    else if (readCommandStr == "menu")
-                    {
-                        sendMessageToClient(currentClientFD, "COMMAND MENU\nhello: Welcome message\n1: Current IP Address\n2: Current Port\n3: Displays Graphic\n4: Displays Graphic\n5: Displays Graphic\npasswd: Change Password\nexit: Disconnect From Server\nmenu: Displays Menu\n\nCOMMAND:");
-                    }
-                    //Checks if command was an int after string comparisons
-                    else
-                    {
-                        checkForIntCommand(buffer, currentClientFD);
+                        //Sends Hello message
+                        if (readCommandStr == "hello")
+                        {
+                            sendMessageToClient(currentClientFD, "(>n_n)> Hello Client\n\nCOMMAND:");
+                        }
+                        //closes client's connection
+                        else if (readCommandStr == "exit")
+                        {
+                            closeClient(currentClientFD, currentVectorIndex);
+                        }
+                        //TODO: HW2
+                        else if (readCommandStr == "passwd")
+                        {
+                            sendMessageToClient(currentClientFD, "TODO: Implement in HW2\n\nCOMMAND:");
+
+                        }
+                        //Displays menu
+                        else if (readCommandStr == "menu")
+                        {
+                            sendMessageToClient(currentClientFD, "COMMAND MENU\nhello: Welcome message\n1: Current IP Address\n2: Current Port\n3: Displays Graphic\n4: Displays Graphic\n5: Displays Graphic\npasswd: Change Password\nexit: Disconnect From Server\nmenu: Displays Menu\n\nCOMMAND:");
+                        }
+                        //Checks if command was an int after string comparisons
+                        else
+                        {
+                            checkForIntCommand(const_cast<char *>(readCommandStr.c_str()), currentClientFD);
+                        }
+                        newlineCmdCount--;
                     }
                 }   
             }   
@@ -271,7 +297,8 @@ void TCPServer::listenSvr() {
 void TCPServer::shutdown() {
     //closes the client sockets
     for (int i = 0; i < MAX_CLIENTS; i++){
-        closeClient(this->client_sockets.at(i), i);
+        //closeClient(this->client_sockets.at(i), i);
+        closeClient(this->clientObj_sockets.at(i)->socketObjFD, i);
     }
     //closes server client
     close(this->socket_FD);
@@ -282,7 +309,8 @@ void TCPServer::closeClient(int inputClientFD, int index){
     //closes client
     close( inputClientFD );   
     //reset vector tracker
-    client_sockets.at(index) = 0; 
+    //client_sockets.at(index) = 0; 
+    this->clientObj_sockets.at(index)->socketObjFD = 0;
 }
 
 //Throws error if input < 0
@@ -369,4 +397,13 @@ void TCPServer::checkForIntCommand(char *inputCommand, int socket){
             sendMessageToClient( socket, unknownCmd );
         }
     }
+}
+
+
+socket_obj::socket_obj(){
+
+}
+
+socket_obj::~socket_obj(){
+    
 }

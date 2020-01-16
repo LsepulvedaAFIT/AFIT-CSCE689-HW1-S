@@ -6,7 +6,19 @@
 #include <netinet/in.h>
 #include <string>
 #include <vector>
+#include <memory>
 
+//client socket object helps keep commands and sockets together for cleaner code
+//this object is only used by TCPServer
+class socket_obj
+{
+public:
+   socket_obj();
+   ~socket_obj();      
+   int socketObjFD = 0;
+   std::string command = "";
+
+};
 
 class TCPServer : public Server 
 {
@@ -35,11 +47,9 @@ private:
    //data structure needed for bind & accept functions
    struct sockaddr_in address; 
 
-   std::vector<int> client_sockets;
-   std::vector<std::string> client_commands;
-
+   //testing
+   std::vector<std::unique_ptr<socket_obj>> clientObj_sockets;
 
 };
-
 
 #endif

@@ -44,18 +44,22 @@ TCPClient::~TCPClient() {
  **********************************************************************************************/
 
 void TCPClient::connectTo(const char *ip_addr, unsigned short port) {
+    //creates socket
     this->socketFD = socket(AF_INET, SOCK_STREAM, 0);
     //this->socketFD = -1;//testing
     errorCheck(this->socketFD, "socket failed\n");
     
+    //sets parameter for socket
     this->servAddress.sin_family = AF_INET;
     this->servAddress.sin_port = htons(port);
 
-    if(inet_pton(AF_INET, "127.0.0.1", &servAddress.sin_addr) <= 0)  
+    //if(inet_pton(AF_INET, "127.0.0.1", &servAddress.sin_addr) <= 0)  
+    if(inet_pton(AF_INET, ip_addr, &servAddress.sin_addr) <= 0)  
     { 
         throw socket_error("Invalid address, not supported");
     } 
 
+    //connects socket
     int connVal = connect(this->socketFD, reinterpret_cast<struct sockaddr *>(&this->servAddress), sizeof(this->servAddress));
     errorCheck(connVal, "connect failed\n");
 }
@@ -75,10 +79,12 @@ void TCPClient::handleConnection() {
     char buffer[1024] = {0}; 
     std::string readBuffer = "";
 
+    //bool bootUp = true; used for testing multiple cmds
+    
     //Main loop for sending and recieving data from server
     while (true)
     {
-        //flush for avoid errors
+        //flush for avoid errors, displays any late/mulitple messages
         std::cout.flush();
         //reads and displays message on console
         valread = read( this->socketFD, buffer, 1024);
@@ -91,6 +97,24 @@ void TCPClient::handleConnection() {
         //take command and add newline to signifiy complete command
         std::cin >> command;
         command = command + '\n';
+        
+        /*testing multiple commands
+        if (bootUp)
+        {
+            command = "hello"; command = command + '\n';
+            command = command + "1"; command = command + '\n';
+            command = command + "2"; command = command + '\n';
+            command = command + "3"; command = command + '\n';
+            command = command + "4"; command = command + '\n';
+            command = command + "5"; command = command + '\n';
+            command = command + "6"; command = command + '\n';
+            bootUp = false;
+        }
+        else{
+            std::cin >> command;
+            command = command + '\n';
+        }*/
+
         //converts to char star and sends to server
         const char *sendCmd = command.c_str();
         send(this->socketFD, const_cast<char *>(sendCmd) , strlen(sendCmd) , 0 );
@@ -102,6 +126,10 @@ void TCPClient::handleConnection() {
             //exits out of loop and proceeds to shutdown
             break;
         }
+        std::cout.flush();
+
+        //temporary sleep for performance
+        sleep(1);
     }
 }
 
@@ -122,5 +150,3 @@ void TCPClient::errorCheck(int input, std::string errMess){
         throw socket_error(errMess);
     }
 }
-
-
